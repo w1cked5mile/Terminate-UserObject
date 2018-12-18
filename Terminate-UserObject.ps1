@@ -24,6 +24,8 @@ User Logon Name of User-Object to be terminated
 Alternate delegate User-Object for mailbox and out of office replies (Optional)
 .Parameter MFA
 Required if using multi-factor authentication with MS Online or Exchange Online
+.Parameter SkipOOO
+Skip processing the Out of Office replies
 .Example
 Terminate-UserObject -TargetUser Minnie.Mouse
 NOTE: Will request credentials twice for login to MS Online and Exchange Online with MFA
@@ -62,6 +64,8 @@ Param (
     [string]$TargetUser,
     [Parameter (Mandatory = $False)]
     [string]$Delegate,
+    [Parameter (Mandatory = $False)]
+    [switch]$SkipOOO,
     [Parameter (Mandatory = $false)]
     [switch]$MFA
 )
@@ -130,24 +134,30 @@ Function Clear-UserAttribs {
 }
 
 Function Set-UserMailbox {
-    #Set Out of Office replies for internal and external emails
-
-    $FullName = $User.GivenName + " " + $User.Surname #Terminated Users Full Name
-
-    If ($User.Manager) {
-        $IntOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($Manager.DisplayName) at $ManagerEmail for assistance with your inquiry." #Internal Out of Office Message
-        $ExtOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($Manager.DisplayName) at $ManagerEmail for assistance with your inquiry." #External Out of Office Message
-    }
+    if ($SkipOOO) {
+        Write-Host "Skipping assignment of Out of Office replies."
+    } 
     else {
-        $IntOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($User.Company) for assistance with your inquiry." #Internal Out of Office Message
-        $ExtOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($User.Company) for assistance with your inquiry." #External Out of Office Message
+        
+        #Define Out of Office replies for internal and external emails
+
+        $FullName = $User.GivenName + " " + $User.Surname #Terminated Users Full Name
+
+        If ($User.Manager) {
+            $IntOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($Manager.DisplayName) at $ManagerEmail for assistance with your inquiry." #Internal Out of Office Message
+            $ExtOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($Manager.DisplayName) at $ManagerEmail for assistance with your inquiry." #External Out of Office Message
+        }
+        else {
+            $IntOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($User.Company) for assistance with your inquiry." #Internal Out of Office Message
+            $ExtOOO = "Effective $termDate, $FullName is no longer a representative of $($User.Company).  Please contact $($User.Company) for assistance with your inquiry." #External Out of Office Message
+        }
+
+        # Set Out of Office messages
+
+        Set-MailboxAutoReplyConfiguration -identity $User.UserPrincipalName -AutoReplyState Enabled -InternalMessage $IntOOO -ExternalMessage $ExtOOO
+        Write-Host "$FullName out of office replies set."
     }
-
-    # Set Out of Office messages
-
-    Set-MailboxAutoReplyConfiguration -identity $User.UserPrincipalName -AutoReplyState Enabled -InternalMessage $IntOOO -ExternalMessage $ExtOOO
-    Write-Host "$FullName out of office replies set."
-
+    
     If ($User.Manager) {
         Add-MailboxPermission -identity $FullName -User $Manager.UserPrincipalName -AccessRights fullaccess -AutoMapping $true
         Write-Host "$($Manager.UserPrincipalName) added as a Full Rights delegate for $FullName mailbox."
@@ -166,7 +176,6 @@ Function Set-UserMailbox {
     Set-ADUser $User -replace @{msExchHideFromAddressLists = $True}
     Write-Host "$FullName hidden from Global Address List."
 }
-
 Function Move-UserTermOU {
 
     # Calculate Terminated OU
