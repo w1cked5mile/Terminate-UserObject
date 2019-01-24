@@ -99,10 +99,10 @@ Function Disable-User {
 
     if ($User.enabled -eq $true) {
         Disable-ADAccount -Server $TargetDC -identity $User.SAMAccountName
-        Write-Host "Disabled $($User.DisplayName)"
+        Write-log -LogEntry "Disabled $($User.DisplayName)" -LogPath $LogPath
     }
     else {
-        Write-Host "$($User.DisplayName) is already disabled"
+        Write-log -LogEntry "$($User.DisplayName) is already disabled" -LogPath $LogPath
     }
 }
 
@@ -110,15 +110,15 @@ Function Clear-UserGroups {
     # Remove User Object from all groups
 
     if ($null -eq $User.MemberOf) {
-        Write-Host "$($User.DisplayName) is not a member of any groups"
+        Write-log -LogEntry "$($User.DisplayName) is not a member of any groups" -LogPath $LogPath
     }
     else {
         $Groups = $User.MemberOf
         foreach ($Group in $Groups) {
             $User.MemberOf | Remove-ADGroupMember -Server $TargetDC -confirm:$false -Members $User.SAMAccountName
-            Write-Host "$($User.DisplayName) removed from $Group"
+            Write-log -LogEntry "$($User.DisplayName) removed from $Group" -LogPath $LogPath
         }
-        Write-Host "$($User.DisplayName) removed from all groups."
+        Write-log -LogEntry  "$($User.DisplayName) removed from all groups." -LogPath $LogPath
     }
 }
 
@@ -130,12 +130,12 @@ Function Clear-UserAttribs {
     Set-ADUser -Server $TargetDC -Identity $User -HomePhone $null
     Set-ADUser -Server $TargetDC -Identity $User -OfficePhone $null
     Set-ADUser -Server $TargetDC -Identity $User -MobilePhone $null
-    Write-Host "Cleared attributes for $($User.DisplayName)."
+    Write-log -LogEntry "Cleared attributes for $($User.DisplayName)." -LogPath $LogPath
 }
 
 Function Set-UserMailbox {
     if ($SkipOOO) {
-        Write-Host "Skipping assignment of Out of Office replies."
+        Write-log -LogEntry  "Skipping assignment of Out of Office replies." -LogPath $LogPath
     } 
     else {
         
@@ -155,26 +155,26 @@ Function Set-UserMailbox {
         # Set Out of Office messages
 
         Set-MailboxAutoReplyConfiguration -identity $User.UserPrincipalName -AutoReplyState Enabled -InternalMessage $IntOOO -ExternalMessage $ExtOOO
-        Write-Host "$FullName out of office replies set."
+        Write-log -LogEntry Write-Host "$FullName out of office replies set." -LogPath $logp
     }
     
     If ($User.Manager) {
         Add-MailboxPermission -identity $FullName -User $Manager.UserPrincipalName -AccessRights fullaccess -AutoMapping $true
-        Write-Host "$($Manager.UserPrincipalName) added as a Full Rights delegate for $FullName mailbox."
+        Write-log -LogEntry "$($Manager.UserPrincipalName) added as a Full Rights delegate for $FullName mailbox." -LogPath $LogPath
     }
     else {
-        Write-Host "$FullName has no manager defined."
+        Write-log -LogEntry "$FullName has no manager defined." -LogPath $LogPath
     }
 
     # Migrate mailbox to shared mailbox
 
     Set-Mailbox $User.UserPrincipalName -Type Shared
-    Write-Host "$FullName mailbox migrated to shared."
+    Write-log -LogEntry "$FullName mailbox migrated to shared." -LogPath $LogPath
 
     # Hide terminated user from the Global Address List
 
     Set-ADUser $User -replace @{msExchHideFromAddressLists = $True}
-    Write-Host "$FullName hidden from Global Address List."
+    Write-log -LogEntry "$FullName hidden from Global Address List." -LogPath $LogPath
 }
 Function Move-UserTermOU {
 
@@ -195,7 +195,7 @@ Function Move-UserTermOU {
     # Move User Object to the Turnover OU
 
     Move-ADObject -Server $TargetDC -Identity $User -TargetPath $termOU
-    Write-Host "$($User.DisplayName) moved to $termOU."
+    Write-log -LogEntry "$($User.DisplayName) moved to $termOU." -LogPath $LogPath
 }
 
 Function Remove-O365Licenses {
@@ -207,9 +207,24 @@ Function Remove-O365Licenses {
     }
 }
 
+# Write Log to text file
+
+function Write-Log {
+    param(
+        [string]$LogEntry, 
+        [string]$LogPath
+    )
+    
+    ((Get-Date).ToString() + " - " + $LogEntry) >> $LogPath;
+}
+
 # Begin Main Script
 
 $termDate = Get-Date -Format d
+$LogPath = ".\Logs\" + $TargetUser + ".txt"
+
+$LogEntry = "Starting termination process for $TargetUser"
+Write-log -LogEntry $LogEntry -LogPath $LogPath
 
 # Search for and populate User information
 
@@ -217,10 +232,13 @@ If ($TargetUser) {
     $TargetDC = Get-UserDC $TargetUser
     
     If ($TargetDC) {
-        Write-Host "Found $TargetUser on $TargetDC" -ForegroundColor Yellow
+        $LogEntry = "Found $TargetUser on $TargetDC"
+        Write-Log -LogEntry $LogEntry -LogPath $LogPath
     }
     else {
-        Write-Host "$TargetUser not found in local domains" -ForegroundColor Red
+        $LogEntry = "$TargetUser not found in local domains"
+        Write-Log -LogEntry $LogEntry -LogPath $LogPath
+        Write-Host $LogEntry -ForegroundColor Red
         Break
     }
 
@@ -238,15 +256,15 @@ elseIf ($user.Manager) {
     $ManagerEmail = Get-PrimarySMTP $Manager
 }
 
-Write-Host "Ready to terminate:" -ForegroundColor Red
-Write-Host "User:           $($User.displayName)" -ForegroundColor Red
-Write-Host "User Email:     $($User.Mail)" -ForegroundColor Red
-Write-Host "User DC:        $TargetDC" -ForegroundColor Red
-Write-Host "User Company:   $($User.Company)" -ForegroundColor Red
+Write-Log -LogEntry "Ready to terminate:" -LogPath $LogPath
+Write-Log -LogEntry "User:           $($User.displayName)" -LogPath $LogPath
+Write-Log -LogEntry "User Email:     $($User.Mail)" -LogPath $LogPath
+Write-Log -LogEntry "User DC:        $TargetDC" -LogPath $LogPath
+Write-Log -LogEntry "User Company:   $($User.Company)" -LogPath $LogPath
 If ($ManagerEmail) {
-    Write-Host "Manger:         $($Manager.displayName)" -ForegroundColor Red
-    Write-Host "Manager Email:  $ManagerEmail" -ForegroundColor Red
-    Write-Host "Manager DC:     $ManagerDC" -ForegroundColor Red
+    Write-Log -LogEntry "Manger:         $($Manager.displayName)" -LogPath $LogPath
+    Write-Log -LogEntry "Manager Email:  $ManagerEmail" -LogPath $LogPath
+    Write-Log -LogEntry "Manager DC:     $ManagerDC" -LogPath $LogPath
 }
 
 If ($MFA) {
@@ -289,7 +307,7 @@ if (get-mailbox -Identity $User.UserPrincipalName) {
     Set-UserMailbox
 }
 else {
-    Write-Host "$($User.DisplayName) does not have a mailbox assigned."
+    Write-log -LogEntry "$($User.DisplayName) does not have a mailbox assigned." -LogPath $LogPath
 }
 
 if ((get-msoluser -UserPrincipalName $User.UserPrincipalName).licenses.servicestatus) {
@@ -298,12 +316,12 @@ if ((get-msoluser -UserPrincipalName $User.UserPrincipalName).licenses.servicest
     Remove-O365Licenses
 }
 else {
-    Write-Host "$($User.DisplayName) does not have licenses assigned."
+    Write-log -LogEntry "$($User.DisplayName) does not have licenses assigned." -LogPath $LogPath
 }
 
 Move-UserTermOU
 
-Write-Host "$($User.displayname) has been terminated."
+Write-log -LogEntry "$($User.displayname) has been terminated." -LogPath $LogPath
 
 # Disconnect open PSSessions
 
