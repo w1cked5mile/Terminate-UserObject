@@ -130,6 +130,8 @@ Function Clear-UserAttribs {
     Set-ADUser -Server $TargetDC -Identity $User -HomePhone $null
     Set-ADUser -Server $TargetDC -Identity $User -OfficePhone $null
     Set-ADUser -Server $TargetDC -Identity $User -MobilePhone $null
+    Set-ADUser -Server $TargetDC -Identity $User -Clear "extensionAttribute1"
+    Set-ADUser -Server $TargetDC -Identity $User -Clear "extensionAttribute10"
     Write-log -LogEntry "Cleared attributes for $($User.DisplayName)." -LogPath $LogPath
 }
 
